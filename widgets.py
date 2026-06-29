@@ -115,7 +115,10 @@ class DataTable(ctk.CTkScrollableFrame):
                 font=("Segoe UI", 11, "bold"),
                 text_color=COLORS["accent"],
                 fg_color="transparent",
-                hover_color=COLORS["card_hover"] if self._on_header_click else "transparent",
+                # NOTE: hover_color must be a real color — customtkinter forbids
+                # "transparent" here.  When the header isn't clickable we match
+                # the header background so there's no visible hover effect.
+                hover_color=COLORS["card_hover"] if self._on_header_click else COLORS["card"],
                 anchor="w",
                 width=w,
                 height=30,

@@ -3,7 +3,6 @@ app.py  –  Main entry point for the Budget Tracker desktop app.
 Run:  python app.py
 """
 import os
-import sys
 import customtkinter as ctk
 
 import database as db
@@ -107,7 +106,7 @@ class BudgetTrackerApp(ctk.CTk):
                                                     on_data_changed=self._on_data_changed)
         self._reports_view       = ReportsView(self.content_area)
         self._settings_view      = SettingsView(self.content_area,
-                                                on_import_done=self._on_import_done)
+                                                on_data_changed=self._on_data_changed)
         self._views = {
             "dashboard":    self._dashboard_view,
             "funds":        self._funds_view,
@@ -125,9 +124,12 @@ class BudgetTrackerApp(ctk.CTk):
         for k, btn in self._nav_btns.items():
             btn.set_active(k == key)
 
-        # If this view was marked stale (or is dashboard/reports which always refresh),
-        # refresh it now; otherwise leave it as-is.
-        if key in self._stale_views or key in ("dashboard", "reports"):
+        # If this view was marked stale, refresh it now; otherwise leave it
+        # as-is.  Dashboard/Reports are kept current via the stale-tracking in
+        # _on_data_changed (and the Settings→BPI notifier), so we no longer
+        # force-refresh them on every visit — that avoids needless chart/table
+        # rebuilds when nothing changed.
+        if key in self._stale_views:
             self._stale_views.discard(key)
             if key == "dashboard":
                 self._dashboard_view.refresh()
@@ -145,29 +147,18 @@ class BudgetTrackerApp(ctk.CTk):
         self._show_view("transactions")
 
     def _on_data_changed(self):
-        """Refresh the active view immediately; mark all others stale."""
+        """Invalidate the *other* data views after an edit.
+
+        The view that triggered the change has already refreshed itself (with
+        the lightest refresh appropriate to it), so we don't refresh the active
+        view again here — we just mark every other data view stale so it
+        rebuilds the next time it's visited.  Settings also calls this (after a
+        BPI change) so the Dashboard picks up the new balance on next visit.
+        """
         key = self._current_view_key
-
-        # Always refresh whichever view is currently visible
-        if key == "dashboard":
-            self._dashboard_view.refresh()
-        elif key == "funds":
-            self._funds_view.refresh()
-        elif key == "transactions":
-            self._transactions_view.refresh()
-        elif key == "reports":
-            self._reports_view.refresh()
-
-        # Mark every other view as stale — they'll refresh on next visit
         for k in ("dashboard", "funds", "transactions", "reports"):
             if k != key:
                 self._stale_views.add(k)
-
-    def _on_import_done(self):
-        """Called after a successful Excel import to refresh all views."""
-        self._dashboard_view.refresh()
-        self._funds_view.refresh()
-        self._reports_view.refresh()
 
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -189,10 +180,10 @@ def main():
 
 
 def _first_run_prompt(app: BudgetTrackerApp):
-    """Show a startup dialog offering to import from Excel."""
+    """Show a friendly welcome dialog on first launch (empty database)."""
     dlg = ctk.CTkToplevel(app)
     dlg.title("Welcome")
-    dlg.geometry("460x220")
+    dlg.geometry("460x230")
     dlg.resizable(False, False)
     dlg.grab_set()
     dlg.configure(fg_color=COLORS["bg"])
@@ -203,36 +194,33 @@ def _first_run_prompt(app: BudgetTrackerApp):
         text="👋  Welcome to Budget Tracker!",
         font=("Segoe UI", 16, "bold"),
         text_color=COLORS["text"],
-    ).pack(pady=(24, 6))
+    ).pack(pady=(26, 6))
     ctk.CTkLabel(
         dlg,
-        text="No data found. Would you like to import your existing\n"
-             "Excel file (BudgetTracker_Final_Update.xlsm) now?",
+        text="Let's get you started. Head to the Income Funds tab to\n"
+             "add your first fund, then log transactions against it.\n\n"
+             "Tip: set your bank balance in Settings.",
         font=("Segoe UI", 12),
         text_color=COLORS["subtext"],
         justify="center",
-    ).pack(pady=(0, 16))
+    ).pack(pady=(0, 18))
 
-    btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
-    btn_row.pack()
-
-    def do_import():
+    def go_to_funds():
         dlg.destroy()
-        app._show_view("settings")
-        app._settings_view._run_import()
+        app._show_view("funds")
 
     ctk.CTkButton(
-        btn_row, text="📥  Import Excel Data", width=180,
+        dlg, text="➕  Add my first fund", width=200,
         fg_color=COLORS["accent"], hover_color=COLORS["accent2"],
         font=("Segoe UI", 13),
-        command=do_import,
-    ).pack(side="left", padx=8)
+        command=go_to_funds,
+    ).pack()
     ctk.CTkButton(
-        btn_row, text="Start Fresh", width=120,
-        fg_color=COLORS["card"], hover_color=COLORS["card_hover"],
-        font=("Segoe UI", 13),
+        dlg, text="Explore on my own", width=160,
+        fg_color="transparent", hover_color=COLORS["card"],
+        text_color=COLORS["subtext"], font=("Segoe UI", 12),
         command=dlg.destroy,
-    ).pack(side="left")
+    ).pack(pady=(8, 0))
 
 
 if __name__ == "__main__":

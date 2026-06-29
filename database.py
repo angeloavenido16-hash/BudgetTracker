@@ -364,38 +364,271 @@ def get_dashboard_totals():
         }
 
 
-def get_expense_by_category(fund_id=None):
-    """Return list of (category, total) sorted descending."""
+def get_expense_by_category(fund_id=None, year=None):
+    """Return list of (category, total) sorted descending.
+
+    Only positive amounts are counted (actual spending).  Optionally filter by
+    ``fund_id`` and/or ``year`` (a "YYYY" string).  The year is taken from each
+    transaction's ``txn_date``, independent of which fund it belongs to.
+    """
+    clauses = ["amount > 0"]
+    params: list = []
+    if fund_id:
+        clauses.append("fund_id = ?")
+        params.append(fund_id)
+    if year:
+        clauses.append("SUBSTR(txn_date,1,4) = ?")
+        params.append(str(year))
+    where = " AND ".join(clauses)
+
     with get_connection() as conn:
-        if fund_id:
-            rows = conn.execute(
-                """SELECT category, SUM(amount) as total
-                   FROM transactions
-                   WHERE fund_id=? AND amount>0
-                   GROUP BY category ORDER BY total DESC""",
-                (fund_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """SELECT category, SUM(amount) as total
-                   FROM transactions
-                   WHERE amount>0
-                   GROUP BY category ORDER BY total DESC"""
-            ).fetchall()
+        rows = conn.execute(
+            f"""SELECT category, SUM(amount) as total
+                FROM transactions
+                WHERE {where}
+                GROUP BY category ORDER BY total DESC""",
+            params,
+        ).fetchall()
         return [(r["category"], r["total"]) for r in rows]
 
 
-def get_spending_over_time():
-    """Monthly totals across all transactions."""
+def get_spending_over_time(year=None):
+    """Monthly spending totals across ALL transactions.
+
+    - Months are derived from each transaction's ``txn_date`` (the date the
+      transaction was added), independent of the income fund it sits under.
+    - Only **positive** amounts are counted as spending; negatives are ignored.
+    - Pass ``year`` ("YYYY") to restrict to a single year; ``None`` = all years.
+    """
+    clauses = ["txn_date IS NOT NULL", "txn_date != ''", "amount > 0"]
+    params: list = []
+    if year:
+        clauses.append("SUBSTR(txn_date,1,4) = ?")
+        params.append(str(year))
+    where = " AND ".join(clauses)
+
     with get_connection() as conn:
         rows = conn.execute(
-            """SELECT SUBSTR(txn_date,1,7) as month,
-                      SUM(CASE WHEN amount>0 THEN amount ELSE 0 END) as total
-               FROM transactions
-               WHERE txn_date IS NOT NULL
-               GROUP BY month ORDER BY month"""
+            f"""SELECT SUBSTR(txn_date,1,7) as month,
+                       SUM(amount) as total
+                FROM transactions
+                WHERE {where}
+                GROUP BY month ORDER BY month""",
+            params,
         ).fetchall()
         return [(r["month"], r["total"]) for r in rows]
+
+
+def get_transaction_years():
+    """Return distinct years ("YYYY") that appear in transaction dates, newest first.
+
+    Used to populate the dashboard's year filter.  Based purely on ``txn_date``
+    so it reflects when transactions were added, regardless of fund.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT SUBSTR(txn_date,1,4) as year
+               FROM transactions
+               WHERE txn_date IS NOT NULL AND txn_date != ''
+               ORDER BY year DESC"""
+        ).fetchall()
+        return [r["year"] for r in rows if r["year"]]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reports — statistical aggregates (Year / Fund filterable)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _apply_txn_filters(clauses: list, params: list, year=None,
+                       fund_id=None, month=None, prefix: str = ""):
+    """Append optional year / month / fund_id conditions to a WHERE builder.
+
+    - ``year``    matches the 4-digit year component of ``txn_date`` ("YYYY").
+    - ``month``   matches the 2-digit month component ("01".."12"), independent
+                  of year, so it combines naturally with the year filter.
+    - ``fund_id`` restricts to a single fund.
+
+    ``prefix`` lets callers disambiguate columns in JOINed queries (e.g. "t").
+    """
+    p = f"{prefix}." if prefix else ""
+    if year:
+        clauses.append(f"SUBSTR({p}txn_date,1,4) = ?")
+        params.append(str(year))
+    if month:
+        clauses.append(f"SUBSTR({p}txn_date,6,2) = ?")
+        params.append(str(month))
+    if fund_id:
+        clauses.append(f"{p}fund_id = ?")
+        params.append(fund_id)
+    return clauses, params
+
+
+def get_report_overview(year=None, fund_id=None, month=None):
+    """Return a bundle of budget-management statistics.
+
+    All figures are derived from transactions (date = ``txn_date``) so they
+    respond to the Year / Month / Fund filters.  Spending = positive amounts only.
+    """
+    with get_connection() as conn:
+        # ── Spending aggregate (positive amounts) ────────────────────────
+        clauses, params = _apply_txn_filters(["amount > 0"], [], year, fund_id, month)
+        agg = conn.execute(
+            f"""SELECT COALESCE(SUM(amount),0) AS total_spent,
+                       COUNT(*)                AS txn_count,
+                       COALESCE(AVG(amount),0) AS avg_txn
+                FROM transactions WHERE {' AND '.join(clauses)}""",
+            params,
+        ).fetchone()
+
+        # ── Savings booked in this period (positive 'savings' category) ──
+        clauses, params = _apply_txn_filters(
+            ["amount > 0", "LOWER(category) = 'savings'"], [], year, fund_id, month)
+        savings = conn.execute(
+            f"SELECT COALESCE(SUM(amount),0) FROM transactions "
+            f"WHERE {' AND '.join(clauses)}",
+            params,
+        ).fetchone()[0]
+
+        # ── Biggest single expense (with context) ───────────────────────
+        clauses, params = _apply_txn_filters(["t.amount > 0"], [], year,
+                                             fund_id, month, prefix="t")
+        biggest = conn.execute(
+            f"""SELECT t.amount, t.category, t.txn_date, f.name AS fund_name
+                FROM transactions t JOIN funds f ON t.fund_id = f.id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY t.amount DESC LIMIT 1""",
+            params,
+        ).fetchone()
+
+        # ── Monthly spending breakdown ───────────────────────────────────
+        clauses, params = _apply_txn_filters(
+            ["amount > 0", "txn_date IS NOT NULL", "txn_date != ''"],
+            [], year, fund_id, month)
+        monthly = conn.execute(
+            f"""SELECT SUBSTR(txn_date,1,7) AS month, SUM(amount) AS total
+                FROM transactions WHERE {' AND '.join(clauses)}
+                GROUP BY month ORDER BY month""",
+            params,
+        ).fetchall()
+
+        # ── Category aggregates (for top / most frequent) ────────────────
+        clauses, params = _apply_txn_filters(["amount > 0"], [], year, fund_id, month)
+        cats = conn.execute(
+            f"""SELECT category, SUM(amount) AS total, COUNT(*) AS cnt
+                FROM transactions WHERE {' AND '.join(clauses)}
+                GROUP BY category ORDER BY total DESC""",
+            params,
+        ).fetchall()
+
+    total_spent   = agg["total_spent"]
+    months        = [(r["month"], r["total"]) for r in monthly]
+    active_months = len(months)
+    avg_monthly   = total_spent / active_months if active_months else 0.0
+    busiest       = max(months, key=lambda m: m[1]) if months else None
+    quietest      = min(months, key=lambda m: m[1]) if months else None
+
+    mom_change = None
+    if len(months) >= 2 and months[-2][1]:
+        mom_change = (months[-1][1] - months[-2][1]) / months[-2][1] * 100
+
+    top_category       = (cats[0]["category"], cats[0]["total"]) if cats else None
+    top_category_share = (cats[0]["total"] / total_spent * 100) if cats and total_spent else 0.0
+    most_frequent      = max(cats, key=lambda r: r["cnt"]) if cats else None
+
+    return {
+        "total_spent":        total_spent,
+        "txn_count":          agg["txn_count"],
+        "avg_txn":            agg["avg_txn"],
+        "savings":            savings,
+        "avg_monthly":        avg_monthly,
+        "active_months":      active_months,
+        "biggest":            dict(biggest) if biggest else None,
+        "busiest_month":      busiest,
+        "quietest_month":     quietest,
+        "mom_change":         mom_change,
+        "latest_month":       months[-1] if months else None,
+        "top_category":       top_category,
+        "top_category_share": top_category_share,
+        "most_frequent":      (most_frequent["category"], most_frequent["cnt"]) if most_frequent else None,
+    }
+
+
+def get_category_statistics(year=None, fund_id=None, month=None):
+    """Per-category spending stats: total, count, average, % share, biggest.
+
+    Spending only (positive amounts).  Sorted by total spent, descending.
+    """
+    with get_connection() as conn:
+        clauses, params = _apply_txn_filters(["amount > 0"], [], year, fund_id, month)
+        rows = conn.execute(
+            f"""SELECT category,
+                       SUM(amount) AS total,
+                       COUNT(*)    AS cnt,
+                       AVG(amount) AS avg_amt,
+                       MAX(amount) AS max_amt
+                FROM transactions WHERE {' AND '.join(clauses)}
+                GROUP BY category ORDER BY total DESC""",
+            params,
+        ).fetchall()
+
+    grand_total = sum(r["total"] for r in rows) or 1.0
+    return [
+        {
+            "category": r["category"],
+            "total":    r["total"],
+            "count":    r["cnt"],
+            "avg":      r["avg_amt"],
+            "max":      r["max_amt"],
+            "share":    r["total"] / grand_total * 100,
+        }
+        for r in rows
+    ]
+
+
+def get_fund_flows(year=None, month=None):
+    """Per-fund money flows for the 'Ins & Outs' report.
+
+    - **Out (−)**  = money spent     = SUM(amount) where amount > 0
+    - **In (+)**   = money returned  = SUM(-amount) where amount < 0 (refunds/reversals)
+    - **Net**      = In − Out        (negative = net spending)
+
+    Filterable by ``year`` and ``month`` (via ``txn_date``).  Funds with no
+    activity in the period are still listed with zero flows.
+    """
+    join_clauses = ["t.fund_id = f.id"]
+    params: list = []
+    if year:
+        join_clauses.append("SUBSTR(t.txn_date,1,4) = ?")
+        params.append(str(year))
+    if month:
+        join_clauses.append("SUBSTR(t.txn_date,6,2) = ?")
+        params.append(str(month))
+    join_cond = " AND ".join(join_clauses)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""SELECT f.id, f.name,
+                       COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS out_flow,
+                       COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount END), 0) AS in_flow,
+                       COUNT(t.id) AS cnt
+                FROM funds f
+                LEFT JOIN transactions t ON {join_cond}
+                GROUP BY f.id, f.name
+                ORDER BY out_flow DESC""",
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "id":       r["id"],
+            "name":     r["name"],
+            "out_flow": r["out_flow"],
+            "in_flow":  r["in_flow"],
+            "net":      r["in_flow"] - r["out_flow"],
+            "count":    r["cnt"],
+        }
+        for r in rows
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

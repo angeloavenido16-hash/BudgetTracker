@@ -1,0 +1,41 @@
+# ── Secrets / env ───────────────────────────────────────────────────────────
+.env
+*.env
+!*.env.example
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ── Node / frontend ─────────────────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ── Databases / data (never commit real financial data) ─────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.pre-clean-*.db
+budget_tracker.db
+
+# ── Editor / OS ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Keep VS Code shared settings but ignore user-local noise
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json

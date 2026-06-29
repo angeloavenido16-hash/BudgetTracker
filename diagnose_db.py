@@ -20,6 +20,8 @@ print('Funds with POSITIVE savings entries:')
 for r in pos_by_fund:
     print(f'  {r[0]:<35} cnt={r[1]}  total={r[2]:,.2f}')
 
+#Jiro
+
 total_income = conn.execute('SELECT COALESCE(SUM(amount),0) FROM funds').fetchone()[0]
 all_txn = conn.execute('SELECT COALESCE(SUM(amount),0) FROM transactions').fetchone()[0]
 print()
