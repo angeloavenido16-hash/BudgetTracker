@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     SEED_USERNAME: str = "admin"
     SEED_PASSWORD: str = "admin"
 
-    # CORS
-    FRONTEND_ORIGIN: str = "http://localhost:5173"
+    # CORS — comma-separated list. Add Railway/Dev URLs as needed.
+    # Example: http://localhost:5173,https://myapp.up.railway.app
+    FRONTEND_ORIGINS: str = "http://localhost:5173"
 
 
 settings = Settings()

@@ -57,7 +57,7 @@ Alembic's `env.py` imports `app.models` to register ORM models on `Base.metadata
 
 Two services, each with its own Dockerfile and railway.json:
 
-- **Backend**: `backend/Dockerfile` + `backend/railway.json`. Attach Railway Postgres plugin. Set `JWT_SECRET`, `APP_USERNAME`, `APP_PASSWORD`, `FRONTEND_ORIGIN`.
+- **Backend**: `backend/Dockerfile` + `backend/railway.json`. Attach Railway Postgres plugin. Set `JWT_SECRET`, `FRONTEND_ORIGINS`.
 - **Frontend**: `frontend/Dockerfile` + `frontend/railway.json`. Build arg `VITE_API_URL` points to backend Railway URL.
 
 JWT secret: `python -c "import secrets; print(secrets.token_hex(32))"`

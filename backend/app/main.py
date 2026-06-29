@@ -48,6 +48,15 @@ async def lifespan(app: FastAPI):
                     )
                 )
                 await session.commit()
+            else:
+                # Keep user #1's password in sync with SEED_PASSWORD
+                # (safety net for migrations that insert a stale placeholder).
+                user1 = await session.get(User, 1)
+                if user1 is not None:
+                    user1.password_hash = hash_password(settings.SEED_PASSWORD)
+                    if not user1.is_admin:
+                        user1.is_admin = True
+                    await session.commit()
         except Exception:
             await session.rollback()
     yield
@@ -60,10 +69,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS (allow the Vite dev server + deployed frontend) ────────────────────
+# ── CORS (comma-separated origins from env) ──────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN],
+    allow_origins=[o.strip() for o in settings.FRONTEND_ORIGINS.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

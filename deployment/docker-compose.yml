@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://budget:budget@db:5432/budget_tracker
       JWT_SECRET: dev-secret-change-me
-      FRONTEND_ORIGIN: http://localhost:5173
+      FRONTEND_ORIGINS: http://localhost:5173
     ports:
       - "8000:8000"
     depends_on:

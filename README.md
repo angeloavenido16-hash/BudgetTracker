@@ -59,7 +59,7 @@ Two Railway services, both using Dockerfiles at their root:
 - Set env vars in Railway dashboard:
   - `JWT_SECRET` (generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
   - `APP_USERNAME` / `APP_PASSWORD`
-  - `FRONTEND_ORIGIN` (the frontend service URL)
+  - `FRONTEND_ORIGINS` (comma-separated frontend URLs)
 
 **Frontend service** — `frontend/Dockerfile` + `frontend/railway.json`
 - Build arg `VITE_API_URL` must be set to the backend service URL

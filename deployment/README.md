@@ -49,8 +49,8 @@ Tear down (wipe data): `docker compose down -v`
 4. Create two services from the same repo:
    - **backend** → `backend/`, uses `backend/Dockerfile`
    - **frontend** → `frontend/`, uses `frontend/Dockerfile`
-5. Set backend env vars: `JWT_SECRET`, `FRONTEND_ORIGIN`
-   (the deployed frontend URL).
+5. Set backend env vars: `JWT_SECRET`, `FRONTEND_ORIGINS`
+   (comma-separated list, e.g. `https://myapp.up.railway.app`).
 6. Set frontend build var: `VITE_API_URL` (the deployed backend URL).
 7. Deploy. On first deploy the startup script auto-runs `alembic upgrade head`
    and seeds a default admin account (`admin` / `admin`). **Change the password
@@ -69,7 +69,8 @@ Tear down (wipe data): `docker compose down -v`
   panel in the app. The bootstrap credentials (`admin` / `admin`) are public.
 - Set a strong `JWT_SECRET` (e.g. `python -c "import secrets;
   print(secrets.token_urlsafe(48))"`).
-- Set `FRONTEND_ORIGIN` to the exact deployed frontend URL so CORS stays locked.
+- Set `FRONTEND_ORIGINS` to a comma-separated list of frontend URLs
+  (e.g. `http://localhost:5173,https://myapp.up.railway.app`) so CORS stays locked.
 
 ---
 
