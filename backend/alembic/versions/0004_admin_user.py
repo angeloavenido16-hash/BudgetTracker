@@ -23,7 +23,7 @@ def upgrade() -> None:
         )
 
     # Mark the initial admin user as admin
-    op.execute("UPDATE users SET is_admin = 1 WHERE username = 'admin'")
+    op.execute("UPDATE users SET is_admin = true WHERE username = 'admin'")
 
 
 def downgrade() -> None:
