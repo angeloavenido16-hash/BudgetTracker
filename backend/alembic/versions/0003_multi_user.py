@@ -1,11 +1,10 @@
 """multi_user_support — add users table and user_id to all data tables.
 
+Database-agnostic rewrite: uses Alembic batch_alter_table so it works on
+both SQLite (which requires table recreation) and Postgres (ALTER TABLE).
+
 Revision ID: 0003
 Revises: 8d5a2c65d5e3
-
-SQLite stores inline UNIQUE(name) constraints as auto-indexes without
-user-facing names. Alembic's batch mode drop_constraint can't reference
-them by name, so we use raw SQL table-recreation instead.
 """
 from __future__ import annotations
 
@@ -18,8 +17,6 @@ down_revision = "8d5a2c65d5e3"
 
 
 def upgrade() -> None:
-    op.execute("PRAGMA foreign_keys=OFF")
-
     # ── users table ──────────────────────────────────────────────────────────
     op.create_table(
         "users",
@@ -38,163 +35,85 @@ def upgrade() -> None:
         "VALUES ('admin', 'placeholder')"
     )
 
-    # ── funds ────────────────────────────────────────────────────────────────
-    # Remove UNIQUE(name), add user_id, add UNIQUE(user_id, name)
-    op.execute("""
-        CREATE TABLE funds_v2 (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
-            name        TEXT    NOT NULL,
-            fund_type   TEXT    NOT NULL DEFAULT 'salary',
-            amount      REAL    NOT NULL DEFAULT 0,
-            cutoff_date TEXT,
-            notes       TEXT,
-            UNIQUE(user_id, name)
+    # ── funds: add user_id, switch from UNIQUE(name) to UNIQUE(user_id, name)
+    with op.batch_alter_table("funds", recreate="auto") as bop:
+        bop.add_column(
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("users.id"),
+                nullable=False,
+                server_default=sa.text("1"),
+            )
         )
-    """)
-    op.execute(
-        "INSERT INTO funds_v2 "
-        "SELECT id, 1, name, fund_type, amount, cutoff_date, notes "
-        "FROM funds"
-    )
-    op.execute("DROP TABLE funds")
-    op.execute("ALTER TABLE funds_v2 RENAME TO funds")
-
-    # ── expense_categories ───────────────────────────────────────────────────
-    # Remove UNIQUE(name), add user_id, add UNIQUE(user_id, name)
-    op.execute("""
-        CREATE TABLE expense_categories_v2 (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id   INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
-            name      TEXT    NOT NULL,
-            is_active INTEGER NOT NULL DEFAULT 1,
-            UNIQUE(user_id, name)
+        bop.drop_constraint("uq_funds_name", type_="unique")
+        bop.create_unique_constraint(
+            "uq_funds_user_name", ["user_id", "name"]
         )
-    """)
-    op.execute(
-        "INSERT INTO expense_categories_v2 "
-        "SELECT id, 1, name, is_active "
-        "FROM expense_categories"
-    )
-    op.execute("DROP TABLE expense_categories")
-    op.execute("ALTER TABLE expense_categories_v2 RENAME TO expense_categories")
 
-    # ── transactions ─────────────────────────────────────────────────────────
-    # Add user_id
-    op.execute("""
-        CREATE TABLE transactions_v2 (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
-            fund_id     INTEGER NOT NULL REFERENCES funds(id) ON DELETE CASCADE,
-            category    TEXT    NOT NULL,
-            amount      REAL    NOT NULL,
-            txn_date    TEXT,
-            remarks     TEXT,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+    # ── expense_categories: same pattern
+    with op.batch_alter_table("expense_categories", recreate="auto") as bop:
+        bop.add_column(
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("users.id"),
+                nullable=False,
+                server_default=sa.text("1"),
+            )
         )
-    """)
-    op.execute(
-        "INSERT INTO transactions_v2 "
-        "SELECT id, 1, fund_id, category, amount, txn_date, remarks, created_at "
-        "FROM transactions"
-    )
-    op.execute("DROP TABLE transactions")
-    op.execute("ALTER TABLE transactions_v2 RENAME TO transactions")
-
-    # ── bpi_balance ──────────────────────────────────────────────────────────
-    # Add user_id
-    op.execute("""
-        CREATE TABLE bpi_balance_v2 (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
-            balance     REAL    NOT NULL,
-            recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        bop.drop_constraint(
+            "uq_expense_categories_name", type_="unique"
         )
-    """)
-    op.execute(
-        "INSERT INTO bpi_balance_v2 "
-        "SELECT id, 1, balance, recorded_at "
-        "FROM bpi_balance"
-    )
-    op.execute("DROP TABLE bpi_balance")
-    op.execute("ALTER TABLE bpi_balance_v2 RENAME TO bpi_balance")
+        bop.create_unique_constraint(
+            "uq_expense_categories_user_name", ["user_id", "name"]
+        )
 
-    op.execute("PRAGMA foreign_keys=ON")
+    # ── transactions: add user_id
+    with op.batch_alter_table("transactions", recreate="auto") as bop:
+        bop.add_column(
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("users.id"),
+                nullable=False,
+                server_default=sa.text("1"),
+            )
+        )
+
+    # ── bpi_balance: add user_id
+    with op.batch_alter_table("bpi_balance", recreate="auto") as bop:
+        bop.add_column(
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("users.id"),
+                nullable=False,
+                server_default=sa.text("1"),
+            )
+        )
 
 
 def downgrade() -> None:
-    op.execute("PRAGMA foreign_keys=OFF")
+    # Reverse order to avoid FK issues.
+    # Drop user_id first on the FK-referencing tables; the composite
+    # UNIQUE constraint that references it disappears with the column.
+    with op.batch_alter_table("bpi_balance", recreate="auto") as bop:
+        bop.drop_column("user_id")
 
-    # Reverse bpi_balance
-    op.execute("""
-        CREATE TABLE bpi_balance_v2 (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            balance     REAL    NOT NULL,
-            recorded_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-        )
-    """)
-    op.execute(
-        "INSERT INTO bpi_balance_v2 "
-        "SELECT id, balance, recorded_at FROM bpi_balance"
-    )
-    op.execute("DROP TABLE bpi_balance")
-    op.execute("ALTER TABLE bpi_balance_v2 RENAME TO bpi_balance")
+    with op.batch_alter_table("transactions", recreate="auto") as bop:
+        bop.drop_column("user_id")
 
-    # Reverse transactions
-    op.execute("""
-        CREATE TABLE transactions_v2 (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            fund_id     INTEGER NOT NULL REFERENCES funds(id) ON DELETE CASCADE,
-            category    TEXT    NOT NULL,
-            amount      REAL    NOT NULL,
-            txn_date    TEXT,
-            remarks     TEXT,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+    # Recreate without user_id and restore UNIQUE(name).
+    with op.batch_alter_table("expense_categories", recreate="always") as bop:
+        bop.drop_column("user_id")
+        bop.create_unique_constraint(
+            "uq_expense_categories_name", ["name"]
         )
-    """)
-    op.execute(
-        "INSERT INTO transactions_v2 "
-        "SELECT id, fund_id, category, amount, txn_date, remarks, created_at "
-        "FROM transactions"
-    )
-    op.execute("DROP TABLE transactions")
-    op.execute("ALTER TABLE transactions_v2 RENAME TO transactions")
 
-    # Reverse expense_categories — preserve is_active, add back UNIQUE(name)
-    op.execute("""
-        CREATE TABLE expense_categories_v2 (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            name      TEXT    NOT NULL UNIQUE,
-            is_active INTEGER NOT NULL DEFAULT 1
-        )
-    """)
-    op.execute(
-        "INSERT INTO expense_categories_v2 "
-        "SELECT id, name, is_active FROM expense_categories"
-    )
-    op.execute("DROP TABLE expense_categories")
-    op.execute("ALTER TABLE expense_categories_v2 RENAME TO expense_categories")
-
-    # Reverse funds — add back UNIQUE(name)
-    op.execute("""
-        CREATE TABLE funds_v2 (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            name          TEXT    NOT NULL UNIQUE,
-            fund_type     TEXT    NOT NULL DEFAULT 'salary',
-            amount        REAL    NOT NULL DEFAULT 0,
-            cutoff_date   TEXT,
-            notes         TEXT
-        )
-    """)
-    op.execute(
-        "INSERT INTO funds_v2 "
-        "SELECT id, name, fund_type, amount, cutoff_date, notes "
-        "FROM funds"
-    )
-    op.execute("DROP TABLE funds")
-    op.execute("ALTER TABLE funds_v2 RENAME TO funds")
+    with op.batch_alter_table("funds", recreate="always") as bop:
+        bop.drop_column("user_id")
+        bop.create_unique_constraint("uq_funds_name", ["name"])
 
     op.execute("DELETE FROM users WHERE username = 'admin'")
     op.drop_table("users")
-
-    op.execute("PRAGMA foreign_keys=ON")
