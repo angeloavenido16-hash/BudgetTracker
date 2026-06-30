@@ -22,7 +22,7 @@ dist-ssr/
 .vite/
 
 # ── Databases / data (never commit real financial data) ─────────────────────
-*.db
+#*.db
 *.sqlite
 *.sqlite3
 *.pre-clean-*.db
