@@ -22,10 +22,10 @@ export type ColorKey = keyof typeof COLORS;
 
 /** Fund type labels (from funds_view.py FUND_TYPE_LABELS). */
 export const FUND_TYPE_LABELS: Record<string, string> = {
-  salary: "💵 Salary",
-  bonus:  "🎁 Bonus",
-  espp:   "📈 ESPP",
-  other:  "🏦 Other",
+  salary: "Salary",
+  bonus:  "Bonus",
+  espp:   "ESPP",
+  other:  "Other",
 };
 
 /** Remaining color rule: green > 0, yellow = 0, red < 0. */

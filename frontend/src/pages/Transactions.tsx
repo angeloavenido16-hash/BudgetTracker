@@ -8,10 +8,13 @@ import {
 } from "../hooks/useTransactions";
 import { useFunds, useFundSummaries } from "../hooks/useFunds";
 import { useCategories } from "../hooks/useCategories";
+import Spinner from "../components/Spinner";
 import { peso } from "../components/StatCard";
 import { remainingColor } from "../theme";
 import Modal from "../components/Modal";
+import { useToast } from "../components/Toast";
 import type { Transaction } from "../api/types";
+import { Eye, EyeOff, Search, FolderOpen, AlertTriangle } from "lucide-react";
 
 const PAGE_SIZE = 20;
 type SortCol = "txn_date" | "category" | "amount" | "remarks";
@@ -26,6 +29,7 @@ export default function Transactions() {
   const [rowSearch, setRowSearch] = useState("");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Transaction | "new" | null>(null);
+  const [fundPickerOpen, setFundPickerOpen] = useState(false);
   const [masked, setMasked] = useState(() => localStorage.getItem("mask") === "1");
   const [sortCol, setSortCol] = useState<SortCol>("txn_date");
   const [sortAsc, setSortAsc] = useState(true);
@@ -45,6 +49,8 @@ export default function Transactions() {
 
   const txns = useTransactions(fundId ?? undefined);
   const del = useDeleteTransaction();
+  const { toast } = useToast();
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
 
   const navFunds = useMemo(() => {
     const q = navSearch.trim().toLowerCase();
@@ -72,7 +78,7 @@ export default function Transactions() {
     });
   }, [txns.data, rowSearch, sortCol, sortAsc]);
 
-  if (funds.isLoading) return <p>Loading…</p>;
+  if (funds.isLoading) return <Spinner />;
   if (funds.isError || !funds.data) return <p>Could not load funds.</p>;
 
   const pageCount = Math.ceil(rowsSorted.length / PAGE_SIZE);
@@ -84,68 +90,47 @@ export default function Transactions() {
   const arrow = (c: SortCol) => (sortCol === c ? (sortAsc ? " ▲" : " ▼") : "");
 
   return (
-    <div className="txn-layout">
-      <aside className="fund-nav">
-        <h3>📂 Income Funds</h3>
-        <input
-          className="cat-search"
-          placeholder="Search fund…"
-          value={navSearch}
-          onChange={(e) => setNavSearch(e.target.value)}
-        />
-        <div className="fund-nav-list">
-          {navFunds.map((f) => (
-            <button
-              key={f.id}
-              className={f.id === fundId ? "fund-nav-item active" : "fund-nav-item"}
-              onClick={() => { setFundId(f.id); setPage(0); }}
-            >
-              {f.name}
-            </button>
-          ))}
-        </div>
-      </aside>
+    <div>
+      <div className="page-head">
+        <h2 className="page-title">{activeFund?.name ?? "Transactions"}</h2>
+      </div>
 
-      <section className="txn-main">
-        <div className="page-head">
-          <h2 className="page-title">{activeFund?.name ?? "Transactions"}</h2>
-          <div className="head-actions">
-            <button className="btn-icon" onClick={toggleMask} title="Hide amounts">
-              {masked ? "🙈" : "👁"}
-            </button>
-            <button className="btn-primary" disabled={!fundId} onClick={() => setEditing("new")}>
-              + Add
-            </button>
+      {/* Per-fund summary cards — only Income + Expenses are masked, like desktop */}
+      {sum && (
+        <div className="mini-cards">
+          <div className="mini-card"><span>Income</span><b>{money(sum.income)}</b></div>
+          <div className="mini-card"><span>Expenses</span><b>{money(sum.expenses)}</b></div>
+          <div className="mini-card"><span>Savings</span>
+            <b>{peso(activeFund?.fund_type === "other" ? sum.house + sum.remaining : sum.savings)}</b>
+          </div>
+          <div className="mini-card"><span>House</span><b>{peso(sum.house)}</b></div>
+          <div className="mini-card"><span>Carry Over</span><b>{peso(sum.carry_over)}</b></div>
+          <div className="mini-card"><span>Remaining</span>
+            <b style={{ color: remainingColor(sum.remaining) }}>{peso(sum.remaining)}</b>
           </div>
         </div>
+      )}
 
-        {/* Per-fund summary cards — only Income + Expenses are masked, like desktop */}
-        {sum && (
-          <div className="mini-cards">
-            <div className="mini-card"><span>Income</span><b>{money(sum.income)}</b></div>
-            <div className="mini-card"><span>Expenses</span><b>{money(sum.expenses)}</b></div>
-            <div className="mini-card"><span>Savings</span>
-              <b>{peso(activeFund?.fund_type === "other" ? sum.house + sum.remaining : sum.savings)}</b>
-            </div>
-            <div className="mini-card"><span>House</span><b>{peso(sum.house)}</b></div>
-            <div className="mini-card"><span>Carry Over</span><b>{peso(sum.carry_over)}</b></div>
-            <div className="mini-card"><span>Remaining</span>
-              <b style={{ color: remainingColor(sum.remaining) }}>{peso(sum.remaining)}</b>
-            </div>
-          </div>
-        )}
+      <div className="search-row">
+        <div className="search-wrap">
+          <Search size={16} className="search-icon" />
+          <input
+            className="cat-search"
+            placeholder="Search category or remarks…"
+            value={rowSearch}
+            onChange={(e) => { setRowSearch(e.target.value); setPage(0); }}
+          />
+        </div>
+        <button className="fund-picker-btn" onClick={() => setFundPickerOpen(true)}>
+          <span className="icon-text"><FolderOpen size={16} /> {activeFund?.name ?? "Select Fund"}</span>
+        </button>
+      </div>
 
-        <input
-          className="cat-search"
-          placeholder="🔍 Search category or remarks…"
-          value={rowSearch}
-          onChange={(e) => { setRowSearch(e.target.value); setPage(0); }}
-        />
-
-        {txns.isLoading ? (
-          <p>Loading…</p>
-        ) : (
-          <>
+      {txns.isLoading ? (
+        <Spinner />
+      ) : (
+        <>
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -153,7 +138,14 @@ export default function Transactions() {
                   <th className="sortable" onClick={() => sortBy("category")}>Category{arrow("category")}</th>
                   <th className="sortable" onClick={() => sortBy("amount")}>Amount{arrow("amount")}</th>
                   <th className="sortable" onClick={() => sortBy("remarks")}>Remarks{arrow("remarks")}</th>
-                  <th></th>
+                  <th><div className="th-actions">
+                      <button className="btn-icon" onClick={toggleMask} title="Hide amounts">
+                        {masked ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                      <button className="btn-primary" disabled={!fundId} onClick={() => setEditing("new")}>
+                        + Add
+                      </button>
+                    </div></th>
                 </tr>
               </thead>
               <tbody>
@@ -169,9 +161,7 @@ export default function Transactions() {
                       <button onClick={() => setEditing(t)}>Edit</button>
                       <button
                         className="danger"
-                        onClick={() => {
-                          if (confirm("Delete this transaction?")) del.mutate(t.id);
-                        }}
+                        onClick={() => setDeleteTarget(t)}
                       >
                         Delete
                       </button>
@@ -183,21 +173,44 @@ export default function Transactions() {
                 )}
               </tbody>
             </table>
+          </div>
 
-            {pageCount > 1 && (
-              <div className="pager">
-                <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
-                  ‹ Prev
-                </button>
-                <span>Page {safePage + 1} / {pageCount}</span>
-                <button disabled={safePage >= pageCount - 1} onClick={() => setPage(safePage + 1)}>
-                  Next ›
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </section>
+          {pageCount > 1 && (
+            <div className="pager">
+              <button disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
+                ‹ Prev
+              </button>
+              <span>Page {safePage + 1} / {pageCount}</span>
+              <button disabled={safePage >= pageCount - 1} onClick={() => setPage(safePage + 1)}>
+                Next ›
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Fund picker modal */}
+      {fundPickerOpen && (
+        <Modal title={<span className="icon-text"><FolderOpen size={18} /> Income Funds</span>} size="lg" onClose={() => setFundPickerOpen(false)}>
+          <input
+            className="cat-search"
+            placeholder="Search fund…"
+            value={navSearch}
+            onChange={(e) => setNavSearch(e.target.value)}
+          />
+          <div className="fund-picker-list">
+            {navFunds.map((f) => (
+              <button
+                key={f.id}
+                className={f.id === fundId ? "fund-pick-item active" : "fund-pick-item"}
+                onClick={() => { setFundId(f.id); setPage(0); setFundPickerOpen(false); }}
+              >
+                {f.name}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {editing && fundId && (
         <TxnModal
@@ -206,6 +219,40 @@ export default function Transactions() {
           txn={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
         />
+      )}
+
+      {deleteTarget && (
+        <Modal
+          title="Delete Transaction"
+          size="sm"
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <button onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button
+                className="btn-primary"
+                style={{ background: "var(--negative)" }}
+                onClick={() => {
+                  del.mutate(deleteTarget.id, {
+                    onSuccess: () => {
+                      toast("Transaction deleted", "success");
+                      setDeleteTarget(null);
+                    },
+                    onError: () => {
+                      toast("Failed to delete transaction", "error");
+                      setDeleteTarget(null);
+                    },
+                  });
+                }}
+                disabled={del.isPending}
+              >
+                {del.isPending ? "Deleting…" : "Delete"}
+              </button>
+            </>
+          }
+        >
+          <div className="modal-notice"><AlertTriangle size={20} /> <span>Delete this transaction? This cannot be undone.</span></div>
+        </Modal>
       )}
     </div>
   );
@@ -224,6 +271,7 @@ function TxnModal({
   const cats = useCategories();
   const create = useCreateTransaction();
   const update = useUpdateTransaction();
+  const { toast } = useToast();
 
   const [category, setCategory] = useState(txn?.category ?? "");
   const [amount, setAmount] = useState(txn ? String(txn.amount) : "");
@@ -237,7 +285,13 @@ function TxnModal({
       txn_date: date || null,
       remarks: remarks || null,
     };
-    const done = { onSuccess: onClose };
+    const done = {
+      onSuccess: () => {
+        toast(txn ? "Transaction updated" : "Transaction created", "success");
+        onClose();
+      },
+      onError: () => toast("Failed to save transaction", "error"),
+    };
     if (txn) update.mutate({ id: txn.id, ...payload }, done);
     else create.mutate({ fund_id: fundId, ...payload }, done);
   };
@@ -283,6 +337,7 @@ function TxnModal({
         Remarks
         <input value={remarks ?? ""} onChange={(e) => setRemarks(e.target.value)} />
       </label>
+      <div className="modal-notice">All fields except Remarks are required.</div>
     </Modal>
   );
 }

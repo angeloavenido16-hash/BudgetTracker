@@ -3,6 +3,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, Area, AreaChart, BarChart, Bar,
 } from "recharts";
+import Spinner from "../components/Spinner";
 import StatCard, { peso } from "../components/StatCard";
 import {
   useDashboard,
@@ -14,6 +15,7 @@ import { useFunds } from "../hooks/useFunds";
 import { useCategories } from "../hooks/useCategories";
 import { useTransactionYears } from "../hooks/useReports";
 import { missingColor } from "../theme";
+import { DollarSign, Gift, TrendingUp } from "lucide-react";
 
 const PIE_COLORS = ["#e94560", "#533483", "#2ecc71", "#f39c12", "#3498db", "#9b59b6", "#e67e22"];
 const SKIP_CATS = new Set(["savings", "carry over", "carry_over", "payment", "interest", "tax", "refund"]);
@@ -41,7 +43,7 @@ export default function Dashboard() {
   const funds = useFunds();
   const years = useTransactionYears();
 
-  if (isLoading) return <p>Loading…</p>;
+  if (isLoading) return <Spinner />;
   if (isError || !data) return <p>Could not load dashboard. Is the API running?</p>;
 
   // Missing Expenses: multi-color — green = 0, yellow > 0, red < 0. Uses present.
@@ -61,7 +63,9 @@ export default function Dashboard() {
     <div>
       <div className="page-head">
         <h2 className="page-title">Dashboard</h2>
-        <label className="dash-filter">
+      </div>
+      <div className="filter-bar">
+        <label>
           Year:&nbsp;
           <select value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="All">All</option>
@@ -70,15 +74,16 @@ export default function Dashboard() {
             ))}
           </select>
         </label>
+        <span className="scope-label">{data.fund_count} funds tracked</span>
       </div>
       <div className="stat-grid">
         <StatCard label="Total Income" value={data.total_income} />
         <StatCard label="Total Expenses" value={data.total_expenses} />
         <StatCard label="Total Savings" value={data.total_savings} />
         <StatCard label="Net Remaining" value={data.net_remaining} colorBySign />
-        <StatCard label="💵 Salary" value={salary} />
-        <StatCard label="🎁 Bonus" value={bonus} />
-        <StatCard label="📈 ESPP" value={espp} />
+        <StatCard label={<span className="icon-text"><DollarSign size={14} /> Salary</span>} value={salary} />
+        <StatCard label={<span className="icon-text"><Gift size={14} /> Bonus</span>} value={bonus} />
+        <StatCard label={<span className="icon-text"><TrendingUp size={14} /> ESPP</span>} value={espp} />
       </div>
 
       <div className="chart-row">
@@ -109,9 +114,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-        {data.fund_count} funds tracked.
-      </p>
     </div>
   );
 }
@@ -119,7 +121,7 @@ export default function Dashboard() {
 /** Area/line chart of monthly spend (year-filtered). */
 function SpendingChart({ year }: { year: string }) {
   const { data, isLoading } = useSpendingOverTime(year);
-  if (isLoading) return <p className="settings-empty">Loading…</p>;
+  if (isLoading) return <Spinner />;
   if (!data || data.length === 0) return <p className="settings-empty">No data yet.</p>;
   const rows = data.map((d) => ({ month: fmtMonth(d.month), total: d.total }));
   return (
@@ -138,7 +140,7 @@ function SpendingChart({ year }: { year: string }) {
 /** Pie of top-7 expense categories (year-filtered, system cats skipped). */
 function CategoryPie({ year }: { year: string }) {
   const { data, isLoading } = useExpenseByCategory(year);
-  if (isLoading) return <p className="settings-empty">Loading…</p>;
+  if (isLoading) return <Spinner />;
   const top = (data ?? []).filter((d) => !SKIP_CATS.has(d.category.toLowerCase()) && d.total > 0).slice(0, 7);
   if (top.length === 0) return <p className="settings-empty">No data yet.</p>;
   return (
@@ -184,7 +186,7 @@ function CategoryHistogram({
         </select>
       </div>
       {isLoading ? (
-        <p className="settings-empty">Loading…</p>
+        <Spinner />
       ) : rows.length === 0 ? (
         <p className="settings-empty">No {sign === "in" ? "inflow" : "outflow"} for “{chosen}” yet.</p>
       ) : (
