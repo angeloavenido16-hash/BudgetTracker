@@ -1,7 +1,8 @@
 import { remainingColor } from "../theme";
+import type { ReactNode } from "react";
 
 interface StatCardProps {
-  label: string;
+  label: ReactNode;
   value: number;
   /** When true, color the value green/red based on sign (like Remaining columns). */
   colorBySign?: boolean;

@@ -2,12 +2,16 @@ import { useMemo, useState } from "react";
 import { useCategories, useAddCategory } from "../hooks/useCategories";
 import { useBpiBalance, useSetBpiBalance } from "../hooks/useBpi";
 import { peso } from "../components/StatCard";
+import { useToast } from "../components/Toast";
+import { Settings as SettingsIcon, CreditCard, Info, Tags, Save } from "lucide-react";
 
 /** Settings — BPI balance, expense categories + about. */
 export default function Settings() {
   return (
     <div>
-      <h2 className="page-title">⚙️ Settings</h2>
+      <div className="page-head">
+        <h2 className="page-title"><span className="icon-text"><SettingsIcon size={20} /> Settings</span></h2>
+      </div>
       <BpiPanel />
       <CategoryPanel />
       <AboutPanel />
@@ -19,18 +23,17 @@ export default function Settings() {
 function BpiPanel() {
   const bpi = useBpiBalance();
   const save = useSetBpiBalance();
+  const { toast } = useToast();
   const [draft, setDraft] = useState("");
-  const [status, setStatus] = useState<"" | "ok" | "err">("");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const n = parseFloat(draft.replace(/,/g, ""));
-    if (Number.isNaN(n)) { setStatus("err"); return; }
+    if (Number.isNaN(n)) { toast("Invalid number", "error"); return; }
     save.mutate(n, {
       onSuccess: () => {
         setDraft("");
-        setStatus("ok");
-        setTimeout(() => setStatus(""), 2500);
+        toast("Balance updated", "success");
       },
     });
   };
@@ -43,7 +46,7 @@ function BpiPanel() {
     <section className="bpi-hero">
       <div className="bpi-strip" />
       <div className="bpi-body">
-        <h3>💳 BPI Current Balance</h3>
+        <h3><span className="icon-text"><CreditCard size={16} /> BPI Current Balance</span></h3>
         <div className="bpi-amount">{bpi.data ? peso(bpi.data.balance) : "…"}</div>
         {recorded && <p className="bpi-recorded">Last updated {recorded}</p>}
         <form className="inline-form" onSubmit={submit}>
@@ -55,10 +58,8 @@ function BpiPanel() {
             onChange={(e) => setDraft(e.target.value)}
           />
           <button type="submit" disabled={save.isPending || draft === ""}>
-            💾 {save.isPending ? "Saving…" : "Update Balance"}
+            <span className="icon-text"><Save size={14} /> {save.isPending ? "Saving…" : "Update Balance"}</span>
           </button>
-          {status === "ok" && <span className="bpi-ok">✔ Saved</span>}
-          {status === "err" && <span className="bpi-err">✘ Invalid number</span>}
         </form>
       </div>
     </section>
@@ -69,7 +70,7 @@ function BpiPanel() {
 function AboutPanel() {
   return (
     <section className="settings-card cat-card">
-      <h3>ℹ️ About</h3>
+      <h3><span className="icon-text"><Info size={16} /> About</span></h3>
       <ul className="kv-list">
         <li><span>App</span><strong>Budget Tracker</strong></li>
         <li><span>Version</span><strong>1.0 — Web</strong></li>
@@ -102,7 +103,7 @@ function CategoryPanel() {
 
   return (
     <section className="settings-card cat-card">
-      <h3>🏷 Expense Categories ({cats.data?.length ?? 0})</h3>
+      <h3><span className="icon-text"><Tags size={16} /> Expense Categories ({cats.data?.length ?? 0})</span></h3>
       <form className="inline-form" onSubmit={submit}>
         <input
           placeholder="New category"

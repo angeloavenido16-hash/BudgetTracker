@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLogin } from "../hooks/useAuth";
+import { Wallet } from "lucide-react";
 
 /** Single-user login screen — POSTs to /auth/login and stores the JWT. */
 export default function Login() {
@@ -20,7 +21,7 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <h1>💰 Budget Tracker</h1>
+        <h1><span className="icon-text"><Wallet size={24} /> Budget Tracker</span></h1>
         <p className="login-sub">Sign in to continue</p>
 
         <label>Username</label>
