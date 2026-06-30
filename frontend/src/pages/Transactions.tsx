@@ -14,7 +14,7 @@ import { remainingColor } from "../theme";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import type { Transaction } from "../api/types";
-import { Eye, EyeOff, Search, FolderOpen } from "lucide-react";
+import { Eye, EyeOff, Search, FolderOpen, AlertTriangle } from "lucide-react";
 
 const PAGE_SIZE = 20;
 type SortCol = "txn_date" | "category" | "amount" | "remarks";
@@ -251,7 +251,7 @@ export default function Transactions() {
             </>
           }
         >
-          <p>Delete this transaction? This cannot be undone.</p>
+          <div className="modal-notice"><AlertTriangle size={20} /> <span>Delete this transaction? This cannot be undone.</span></div>
         </Modal>
       )}
     </div>
@@ -337,6 +337,7 @@ function TxnModal({
         Remarks
         <input value={remarks ?? ""} onChange={(e) => setRemarks(e.target.value)} />
       </label>
+      <div className="modal-notice">All fields except Remarks are required.</div>
     </Modal>
   );
 }

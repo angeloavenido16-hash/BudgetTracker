@@ -13,7 +13,7 @@ import { FUND_TYPE_LABELS, remainingColor } from "../theme";
 import Modal from "../components/Modal";
 import { useToast } from "../components/Toast";
 import type { Fund, FundType, FundSummary } from "../api/types";
-import { Eye, EyeOff, DollarSign, Gift, TrendingUp, Building2, Lock } from "lucide-react";
+import { Eye, EyeOff, DollarSign, Gift, TrendingUp, Building2, Lock, AlertTriangle } from "lucide-react";
 
 const FUND_TYPE_ICONS: Record<string, ReactNode> = {
   salary: <DollarSign size={14} />,
@@ -239,7 +239,7 @@ export default function Funds() {
             </>
           }
         >
-          <p>Delete "{deleteTarget.name}" and all its transactions? This cannot be undone.</p>
+          <div className="modal-notice"><AlertTriangle size={20} /> <span>Delete "{deleteTarget.name}" and all its transactions? This cannot be undone.</span></div>
         </Modal>
       )}
     </div>
@@ -328,6 +328,7 @@ function FundModal({ fund, onClose }: { fund: Fund | null; onClose: () => void }
         Notes
         <input value={notes ?? ""} onChange={(e) => setNotes(e.target.value)} />
       </label>
+      <div className="modal-notice">Salary fund names are auto-generated from the cutoff date.</div>
     </Modal>
   );
 }

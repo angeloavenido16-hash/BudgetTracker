@@ -12,7 +12,7 @@ import {
   useResetPassword,
   type UserInfo,
 } from "../hooks/useAuth";
-import { Users, KeyRound, UserPlus, PauseCircle, PlayCircle, Trash2 } from "lucide-react";
+import { Users, KeyRound, UserPlus, PauseCircle, PlayCircle, Trash2, AlertTriangle } from "lucide-react";
 
 function ConfirmModal({
   title,
@@ -37,7 +37,7 @@ function ConfirmModal({
       onClose={onClose}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button className="btn-primary" onClick={onClose} disabled={loading}>
+          <button onClick={onClose} disabled={loading}>
             Cancel
           </button>
           <button
@@ -55,7 +55,11 @@ function ConfirmModal({
         </div>
       }
     >
-      <p>{message}</p>
+      {danger ? (
+        <div className="modal-notice"><AlertTriangle size={20} /> <span>{message}</span></div>
+      ) : (
+        <p>{message}</p>
+      )}
     </Modal>
   );
 }
@@ -93,7 +97,7 @@ function PasswordModal({
       onClose={onClose}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button className="btn-primary" onClick={onClose} disabled={reset.isPending}>
+          <button onClick={onClose} disabled={reset.isPending}>
             Cancel
           </button>
           <button
@@ -115,18 +119,18 @@ function PasswordModal({
           autoFocus
         />
       </label>
+      <div className="modal-notice">Set a new password for {user.username}. They'll use this to log in next time.</div>
     </Modal>
   );
 }
 
-function NewUserForm({ onCreated }: { onCreated: () => void }) {
+function CreateAccountModal({ onClose }: { onClose: () => void }) {
   const reg = useRegister();
   const { toast } = useToast();
   const [u, setU] = useState("");
   const [p, setP] = useState("");
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = () => {
     const uname = u.trim();
     if (!uname || !p) return;
     reg.mutate(
@@ -136,7 +140,7 @@ function NewUserForm({ onCreated }: { onCreated: () => void }) {
           setU("");
           setP("");
           toast(`Created "${uname}"`, "success");
-          onCreated();
+          onClose();
         },
         onError: (err: any) => {
           const detail = err?.response?.data?.detail ?? "Error";
@@ -147,25 +151,26 @@ function NewUserForm({ onCreated }: { onCreated: () => void }) {
   };
 
   return (
-    <section className="settings-card" style={{ marginBottom: 20 }}>
-      <h3><span className="icon-text"><UserPlus size={16} /> Create Account</span></h3>
-      <form className="inline-form" onSubmit={submit}>
-        <input
-          placeholder="Username"
-          value={u}
-          onChange={(e) => setU(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={p}
-          onChange={(e) => setP(e.target.value)}
-        />
-        <button type="submit" disabled={reg.isPending || !u.trim() || !p}>
+    <Modal title={<span className="icon-text"><UserPlus size={16} /> Create Account</span>}
+      onClose={onClose}
+      footer={
+        <button className="btn-primary" onClick={submit} disabled={reg.isPending || !u.trim() || !p}>
           {reg.isPending ? "Creating…" : "Create"}
         </button>
-      </form>
-    </section>
+      }>
+      <label>
+        Username
+        <input placeholder="Username" value={u}
+          onChange={(e) => setU(e.target.value)} autoFocus />
+      </label>
+      <label>
+        Password
+        <input type="password" placeholder="Password" value={p}
+          onChange={(e) => setP(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()} />
+      </label>
+      <div className="modal-notice">New users can log in immediately after creation.</div>
+    </Modal>
   );
 }
 
@@ -184,6 +189,7 @@ export default function Accounts() {
     user: UserInfo;
   } | null>(null);
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<UserInfo | null>(null);
 
   const handleConfirm = () => {
@@ -223,8 +229,6 @@ export default function Accounts() {
         <h2 className="page-title"><span className="icon-text"><Users size={20} /> Accounts</span></h2>
       </div>
 
-      <NewUserForm onCreated={() => {}} />
-
       {isLoading && <Spinner />}
 
       {users && users.length > 0 && (
@@ -236,7 +240,11 @@ export default function Accounts() {
                 <th className="sortable" onClick={() => sortBy("username")}>Username{arrow("username")}</th>
                 <th className="sortable" onClick={() => sortBy("created_at")}>Created{arrow("created_at")}</th>
                 <th className="sortable" onClick={() => sortBy("is_active")}>Status{arrow("is_active")}</th>
-                <th>Actions</th>
+                <th><span className="th-actions">
+                  <button className="btn-icon" title="Create Account" onClick={() => setShowCreateModal(true)}>
+                    <UserPlus size={15} />
+                  </button>
+                </span></th>
               </tr>
             </thead>
             <tbody>
@@ -347,6 +355,10 @@ export default function Accounts() {
           user={passwordTarget}
           onClose={() => setPasswordTarget(null)}
         />
+      )}
+
+      {showCreateModal && (
+        <CreateAccountModal onClose={() => setShowCreateModal(false)} />
       )}
     </div>
   );
