@@ -26,7 +26,7 @@ dist-ssr/
 *.sqlite
 *.sqlite3
 *.pre-clean-*.db
-budget_tracker.db
+#budget_tracker.db
 
 # ── Editor / OS ─────────────────────────────────────────────────────────────
 .DS_Store
